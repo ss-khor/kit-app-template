@@ -18,6 +18,7 @@ import omni.ui as ui
 from omni.kit.menu.utils import MenuHelperExtension
 from pxr import Usd, UsdGeom, UsdShade, UsdUtils, Ar, Sdf
 
+
 # Functions and vars are available to other extensions as usual in python:
 # `my_company.my_usd_paths.some_public_function(x)`
 
@@ -71,10 +72,16 @@ class MyUSDpaths(omni.ext.IExt, MenuHelperExtension):
         self._window = None
 
         ui.Workspace.set_show_window_fn(
-            MyUSDpaths.WINDOW_NAME, self._show_ui)
-        self.menu_startup(MyUSDpaths.WINDOW_NAME,
-                          MyUSDpaths.WINDOW_NAME, MyUSDpaths.MENU_GROUP)
+            MyUSDpaths.WINDOW_NAME,
+            self._show_ui
+        )
+        self.menu_startup(
+            MyUSDpaths.WINDOW_NAME,
+            MyUSDpaths.WINDOW_NAME,
+            MyUSDpaths.MENU_GROUP
+        )
 
+        self._show_ui(True)
         print("[my_company.my_usd_paths] Extension startup")
 
     def on_shutdown(self):
@@ -161,11 +168,14 @@ class MyUSDpaths(omni.ext.IExt, MenuHelperExtension):
             return
 
         for p in stage.Traverse():
-            if p.IsA(UsdShade.Material):
-                if not p.GetMetadata("ignore_material_updates"):
-                    material = UsdShade.Material(p)
-                    shader = material.ComputeSurfaceSource("mdl")[0]
-                    shaders.append(shader.GetPath().pathString)
+            if not p.IsA(UsdShade.Material):
+                continue
+            carb.log_info(f"Found material: {p.GetPath()}")
+            if p.GetMetadata("ignore_material_updates"):
+                continue
+            material = UsdShade.Material(p)
+            shader = material.ComputeSurfaceSource("mdl")[0]
+            shaders.append(shader.GetPath().pathString)
 
         old_paths = omni.usd.get_context().get_selection().get_selected_prim_paths()
         omni.usd.get_context().get_selection().set_selected_prim_paths(shaders, True)
@@ -191,31 +201,60 @@ class MyUSDpaths(omni.ext.IExt, MenuHelperExtension):
                 with ui.VStack(spacing=2, height=0):
                     self._scrollable_pending.sort()
                     for path in self._scrollable_pending:
-                        text_box = ui.StringField(skip_draw_when_clipped=True)
-                        text_box.model.set_value(path)
-                        self._unique_paths[path] = text_box
+                        with ui.HStack():
+                            text_box = ui.StringField(
+                                skip_draw_when_clipped=True)
+                            text_box.model.set_value(path)
+                            self._unique_paths[path] = text_box
+
+                            def make_on_click(p=path):
+                                def _on_click():
+                                    # 调用 find_prims_using_asset 并打印结果
+                                    users = self.find_prims_using_asset(p)
+                                    if not users:
+                                        carb.log_warn(
+                                            f"No prims found using asset: {p}")
+                                        return
+                                    carb.log_warn(
+                                        f"Prims using asset: {p}")
+                                    for u in users:
+                                        carb.log_warn(f"    {u}")
+                                return _on_click
+
+                            ui.Button(
+                                "Focus",
+                                width=0,
+                                clicked_fn=make_on_click(path)
+                            )
+
                     self._scrollable_pending = None
 
             if len(self._unique_paths) > 0:
                 self._toggle_block(True)
 
-        asyncio.ensure_future(self.get_asset_paths(
-            on_preload_complete, self._list_all_paths))
+        asyncio.ensure_future(
+            self.get_asset_paths(
+                on_preload_complete,
+                self._list_all_paths
+            )
+        )
 
     def _build_ui(self):
         with self._window.frame:
             with ui.VStack(spacing=4):
                 with ui.VStack(spacing=2, height=0):
-
                     ui.Spacer(height=4)
-
                     with ui.HStack(spacing=10, height=0):
-                        ui.Label("Search", width=60,
-                                 alignment=ui.Alignment.RIGHT_CENTER)
-                        with ui.ZStack(height=0):
+                        ui.Label(
+                            "Search",
+                            width=60,
+                            alignment=ui.Alignment.RIGHT_CENTER
+                        )
 
+                        with ui.ZStack(height=0):
                             self._txt_search = ui.StringField(
-                                identifier="search_string_field")
+                                identifier="search_string_field"
+                            )
                             with ui.HStack():
                                 ui.Spacer(height=0)
 
@@ -278,23 +317,25 @@ class MyUSDpaths(omni.ext.IExt, MenuHelperExtension):
                         self._txt_replace.model.add_value_changed_fn(
                             on_text_changed)
                         ui.Spacer(width=14)
+
                 self._scrollable = ui.ScrollingFrame(
                     text="ScrollingFrame", vertical_scrollbar_policy=omni.ui.ScrollBarPolicy.SCROLLBAR_ALWAYS_ON
                 )
 
     def _show_ui(self, value):
         if self._window is None:
-            window_flags = ui.WINDOW_FLAGS_NO_SCROLLBAR
             self._window = ui.Window(
-                "My USD Paths",
-                width=400,
-                height=400,
-                flags=window_flags,
-                dockPreference=omni.ui.DockPreference.LEFT_BOTTOM,
+                self.WINDOW_NAME,
+                # width=400,
+                # height=200,
+                # flags=ui.WINDOW_FLAGS_NO_SCROLLBAR,
+                # dockPreference=omni.ui.DockPreference.LEFT_BOTTOM,
             )
             self._window.set_visibility_changed_fn(self._on_visibility_changed)
             self._window.deferred_dock_in(
-                "Console", ui.DockPolicy.CURRENT_WINDOW_IS_ACTIVE)
+                "Console",
+                ui.DockPolicy.CURRENT_WINDOW_IS_ACTIVE
+            )
             self._window.dock_order = 99
             self._build_ui()
 
@@ -325,7 +366,77 @@ class MyUSDpaths(omni.ext.IExt, MenuHelperExtension):
                 all_layers.append(session_layer)
 
             for layer in all_layers:
+                carb.log_warn(
+                    f"Modifying asset paths in layer: {layer.identifier}")
                 UsdUtils.ModifyAssetPaths(layer, get_path_fn)
             on_complete_fn()
 
         await self._preload_materials_from_stage(on_preload_complete)
+
+    def find_prims_using_asset(self, asset_path):
+        stage = omni.usd.get_context().get_stage()
+        users = []
+        carb.log_warn(f"Finding prims using asset: {asset_path}")
+        for prim in stage.Traverse():
+            carb.log_warn(f"  Checking prim: {prim.GetPath()}")
+            for attr in prim.GetAttributes():
+                name = attr.GetName()
+                val = attr.Get()
+                if isinstance(val, Sdf.AssetPath):
+                    # val = val.resolvedPath
+                    val = val.path
+                carb.log_warn(
+                    f"      Attribute [ {name} ]: {val}")
+                if val == asset_path:
+                    users.append(prim.GetPath())
+                    carb.log_warn(
+                        f"      Found asset path in attribute [ {name} ] of prim: {prim.GetPath()}")
+            # Check references
+            refs = prim.GetReferences()
+            carb.log_warn(f"  refs: {refs}")
+            # for ref in refs:
+            #     print(f"Checking reference {ref}")
+            #     if asset_path in ref.assetPath:
+            #         print(
+            #             f"Prim {prim.GetPath()} references asset {asset_path}")
+            # Check payloads
+            # for pl in prim.GetPayloads().GetAddedPayloads():
+            #     if asset_path in pl.assetPath:
+            #         print(
+            #             f"Prim {prim.GetPath()} uses asset {asset_path} as a payload")
+        # print(f"Checking prim: {prim.GetPath()}")
+        # stack = prim.GetPrimStack()
+        # print(f"Checking stack: {stack}")
+        # print(stack[0].payloadList)
+        # print(stack[0].payloadList.prependedItems[0].assetPath)
+        #     # 1. 检查 reference
+        #     refs = prim.GetReferences().GetAppliedItems()
+        #     print(f"{refs}")
+        #     for ref in refs:
+        #         if ref.assetPath == asset_path:
+        #             users.append(prim.GetPath())
+        #     # 2. 检查 payload
+        #     for payload in prim.GetPayloads():
+        #         if payload.assetPath == asset_path:
+        #             users.append(prim.GetPath())
+        #     # 3. 检查属性里的 asset path
+        #     for attr in prim.GetAttributes():
+        #         # 只查 asset 类型
+        #         if attr.GetTypeName() == "asset":
+        #             val = attr.Get()
+        #             if val == asset_path:
+        #                 users.append(prim.GetPath())
+        #         # 兼容字符串、Sdf.AssetPath、数组等
+        #         elif isinstance(attr.Get(), str) and asset_path in attr.Get():
+        #             users.append(prim.GetPath())
+        #         elif isinstance(attr.Get(), Sdf.AssetPath):
+        #             if asset_path in attr.Get().path:
+        #                 users.append(prim.GetPath())
+        #         elif isinstance(attr.Get(), (list, tuple)):
+        #             for v in attr.Get():
+        #                 if isinstance(v, Sdf.AssetPath) and asset_path in v.path:
+        #                     users.append(prim.GetPath())
+        # print("以下 prim 使用了该 asset:")
+        # for u in users:
+        #     print(u)
+        return users
