@@ -16,6 +16,7 @@ import carb
 import omni.ext
 import omni.ui as ui
 from omni.kit.menu.utils import MenuHelperExtension
+from omni.kit.viewport.utility import get_active_viewport, frame_viewport_selection
 from pxr import Usd, UsdGeom, UsdShade, UsdUtils, Ar, Sdf
 
 
@@ -81,7 +82,7 @@ class MyUSDpaths(omni.ext.IExt, MenuHelperExtension):
             MyUSDpaths.MENU_GROUP
         )
 
-        self._show_ui(True)
+        # self._show_ui(True)
         print("[my_company.my_usd_paths] Extension startup")
 
     def on_shutdown(self):
@@ -205,26 +206,57 @@ class MyUSDpaths(omni.ext.IExt, MenuHelperExtension):
                             text_box = ui.StringField(
                                 skip_draw_when_clipped=True)
                             text_box.model.set_value(path)
+                            text_box.read_only = True
                             self._unique_paths[path] = text_box
 
-                            def make_on_click(p=path):
-                                def _on_click():
-                                    # 调用 find_prims_using_asset 并打印结果
-                                    users = self.find_prims_using_asset(p)
-                                    if not users:
-                                        carb.log_warn(
-                                            f"No prims found using asset: {p}")
-                                        return
-                                    carb.log_warn(
-                                        f"Prims using asset: {p}")
-                                    for u in users:
-                                        carb.log_warn(f"    {u}")
-                                return _on_click
+                            def make_find_prims(p=path):
+                                def _on_find_prims():
+                                    # 延迟清空和重建 UI，避免在 draw/event 期间操作
+                                    async def update_ui():
+                                        users = self.find_prims_using_asset(p)
+
+                                        def build_result():
+                                            self._scrollable.clear()
+
+                                            with self._scrollable:
+                                                with ui.VStack(spacing=2, height=0):
+                                                    if not users:
+                                                        ui.Label(
+                                                            f"No prims found using asset: {p}")
+                                                        return
+                                                    for prim_path in sorted(users):
+                                                        with ui.HStack():
+                                                            prim_field = ui.StringField(
+                                                                skip_draw_when_clipped=True)
+                                                            prim_field.model.set_value(
+                                                                str(prim_path))
+                                                            prim_field.read_only = True
+
+                                                            def make_jump(pp):
+                                                                def _on_jump():
+                                                                    ctx = omni.usd.get_context()
+                                                                    ctx.get_selection().set_selected_prim_paths(
+                                                                        [str(pp)], True)
+                                                                    frame_viewport_selection(
+                                                                        get_active_viewport())
+                                                                return _on_jump
+
+                                                            ui.Button(
+                                                                "Jump",
+                                                                width=0,
+                                                                clicked_fn=make_jump(
+                                                                    prim_path)
+                                                            )
+
+                                        await omni.kit.app.get_app_interface().next_update_async()
+                                        build_result()
+                                    asyncio.ensure_future(update_ui())
+                                return _on_find_prims
 
                             ui.Button(
-                                "Focus",
+                                "Prims",
                                 width=0,
-                                clicked_fn=make_on_click(path)
+                                clicked_fn=make_find_prims(path)
                             )
 
                     self._scrollable_pending = None
@@ -383,60 +415,40 @@ class MyUSDpaths(omni.ext.IExt, MenuHelperExtension):
                 name = attr.GetName()
                 val = attr.Get()
                 if isinstance(val, Sdf.AssetPath):
-                    # val = val.resolvedPath
                     val = val.path
-                carb.log_warn(
-                    f"      Attribute [ {name} ]: {val}")
+                # carb.log_warn(
+                #     f"      Attribute [ {name} ]: {val}")
                 if val == asset_path:
-                    users.append(prim.GetPath())
                     carb.log_warn(
                         f"      Found asset path in attribute [ {name} ] of prim: {prim.GetPath()}")
-            # Check references
-            refs = prim.GetReferences()
-            carb.log_warn(f"  refs: {refs}")
-            # for ref in refs:
-            #     print(f"Checking reference {ref}")
-            #     if asset_path in ref.assetPath:
-            #         print(
-            #             f"Prim {prim.GetPath()} references asset {asset_path}")
-            # Check payloads
-            # for pl in prim.GetPayloads().GetAddedPayloads():
-            #     if asset_path in pl.assetPath:
-            #         print(
-            #             f"Prim {prim.GetPath()} uses asset {asset_path} as a payload")
-        # print(f"Checking prim: {prim.GetPath()}")
-        # stack = prim.GetPrimStack()
-        # print(f"Checking stack: {stack}")
-        # print(stack[0].payloadList)
-        # print(stack[0].payloadList.prependedItems[0].assetPath)
-        #     # 1. 检查 reference
-        #     refs = prim.GetReferences().GetAppliedItems()
-        #     print(f"{refs}")
-        #     for ref in refs:
-        #         if ref.assetPath == asset_path:
-        #             users.append(prim.GetPath())
-        #     # 2. 检查 payload
-        #     for payload in prim.GetPayloads():
-        #         if payload.assetPath == asset_path:
-        #             users.append(prim.GetPath())
-        #     # 3. 检查属性里的 asset path
-        #     for attr in prim.GetAttributes():
-        #         # 只查 asset 类型
-        #         if attr.GetTypeName() == "asset":
-        #             val = attr.Get()
-        #             if val == asset_path:
-        #                 users.append(prim.GetPath())
-        #         # 兼容字符串、Sdf.AssetPath、数组等
-        #         elif isinstance(attr.Get(), str) and asset_path in attr.Get():
-        #             users.append(prim.GetPath())
-        #         elif isinstance(attr.Get(), Sdf.AssetPath):
-        #             if asset_path in attr.Get().path:
-        #                 users.append(prim.GetPath())
-        #         elif isinstance(attr.Get(), (list, tuple)):
-        #             for v in attr.Get():
-        #                 if isinstance(v, Sdf.AssetPath) and asset_path in v.path:
-        #                     users.append(prim.GetPath())
-        # print("以下 prim 使用了该 asset:")
-        # for u in users:
-        #     print(u)
+                    users.append(prim.GetPath())
+
+            stack = prim.GetPrimStack()
+            # carb.log_warn(f"  Checking stack: {stack}")
+            for stack_item in stack:
+                carb.log_warn(f"    Checking stack: {stack_item}")
+                # 合并 payload 和 reference 列表
+                payloads = getattr(
+                    stack_item.payloadList, "prependedItems", [])
+                carb.log_warn(f"      Payloads: {stack_item.payloadList}")
+                references = getattr(
+                    stack_item.referenceList, "prependedItems", [])
+                carb.log_warn(f"      References: {stack_item.referenceList}")
+                for item in list(payloads) + list(references):
+                    item_asset_path = getattr(item, "assetPath", None)
+                    carb.log_warn(f"      AssetPath: {item_asset_path}")
+                    if item_asset_path == asset_path:
+                        users.append(prim.GetPath())
+                        carb.log_warn(
+                            f"      Found matching asset path: {item_asset_path}")
+
+            # compQuery = Usd.PrimCompositionQuery(prim)
+            # for comp in compQuery.GetCompositionArcs():
+            #     target_layer = comp.GetTargetLayer().identifier
+            #     carb.log_warn(f"    ArcType: {comp.GetArcType()}")
+            #     carb.log_warn(f"    TargetLayer: {target_layer}")
+            #     if target_layer == asset_path:
+            #         users.append(prim.GetPath(
+            #         carb.log_warn(
+          #             f"      Found matching target laye)
         return users
