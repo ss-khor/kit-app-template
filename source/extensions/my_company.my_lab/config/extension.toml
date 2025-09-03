@@ -9,28 +9,26 @@
 # its affiliates is strictly prohibited.
 
 [package]
-title = "{{ extension_display_name }}"
-version = "{{ version }}"  # Semantic Versioning is used: https://semver.org/
+title = "My Lab"
+version = "0.1.0"  # Semantic Versioning is used: https://semver.org/
 description = "The simplest python extension example. Use it as a starting point for your extensions."
-category = "Messaging"  # How to categorize this in the Extension Manager
+category = "Example"  # How to categorize this in the Extension Manager
 changelog = "docs/CHANGELOG.md"
 icon = "data/icon.png"  # Icon to show in the Extension Manager
-keywords = ["kit", "messaging", "extra"]  # Search keywords for the Extension Manager
+keywords = ["kit", "example", "extension"]  # Search keywords for the Extension Manager
 preview_image = "data/preview.png"  # Preview to show in the Extension Manager
-readme = "docs/README.md" # Path (relative to the root) or content of readme markdown file for UI
+readme  = "docs/README.md"  # Path (relative to the root) or content of readme markdown file for UI
 repository = "https://github.com/NVIDIA-Omniverse/kit-app-template"  # URL of the extension source repository
 
 
 [dependencies]
-"omni.kit.livestream.messaging" = {}
-"omni.usd" = {}
-"omni.kit.viewport.utility" = {}
+
 
 [settings]
 
 
-[[python.module]]  # Main python module this extension provides, it will be publicly available as "import omni.hello.world"
-name = "{{ extension_name }}"
+[[python.module]]  # Main python module this extension provides, it will be publicly available as "import my_company.my_lab"
+name = "my_company.my_lab"
 
 
 [documentation]
@@ -41,22 +39,8 @@ pages = [
 
 
 [[test]]
-
 dependencies = [
-    "omni.activity.ui",
-    "omni.kit.stage_templates",
-    "omni.kit.ui_test",
-    "omni.kit.viewport.window",
 ]
 
 args = [
-    "--/app/fastShutdown=1",
-    "--/app/file/ignoreUnsavedOnExit=true",
-    "--/app/window/dpiScaleOverride=1.0",
-    "--/app/window/height=720",
-    "--/app/window/scaleToMonitor=false",
-    "--/app/window/width=1280",
-    "--/exts/omni.kit.viewport.window/startup/windowName=Viewport",
-    "--no-window",
-    "--reset-user"
 ]

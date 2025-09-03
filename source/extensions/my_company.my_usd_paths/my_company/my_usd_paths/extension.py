@@ -41,11 +41,6 @@ class MyUSDpaths(omni.ext.IExt, MenuHelperExtension):
     WINDOW_NAME = "My USD Paths"
     MENU_GROUP = "Window"
 
-    """This is a blank extension template."""
-    # ext_id is the current extension id. It can be used with the extension
-    # manager to query additional information, like where this extension is
-    # located on the filesystem.
-
     def on_startup(self, _ext_id):
         """This is called every time the extension is activated."""
         self._use_regex = False
