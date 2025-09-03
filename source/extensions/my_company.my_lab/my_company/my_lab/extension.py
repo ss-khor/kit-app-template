@@ -64,7 +64,7 @@ class MyLab(omni.ext.IExt, MenuHelperExtension):
             MyLab.WINDOW_NAME,
             MyLab.MENU_GROUP
         )
-        self._show_ui(True)
+        # self._show_ui(True)
         print("[my_company.my_lab] Extension startup")
 
     def on_shutdown(self):
